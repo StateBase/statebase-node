@@ -1,8 +1,11 @@
 # StateBase TypeScript SDK
 
-Official TypeScript/JavaScript SDK for [StateBase](https://statebase.org) - AI Agent State & Memory Infrastructure.
+Official TypeScript/JavaScript SDK for [StateBase](https://statebase.org) - The Reliability Layer for Production AI Agents.
 
-## Installation
+[![npm version](https://badge.fury.io/js/statebase-sdk.svg)](https://badge.fury.io/js/statebase-sdk)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
+## 📦 Installation
 
 ```bash
 npm install statebase-sdk
@@ -10,72 +13,71 @@ npm install statebase-sdk
 yarn add statebase-sdk
 ```
 
-## Quick Start
+## 🚀 Quick Start
+
+### API Key
+Get your API key regarding your instance or from [statebase.org](https://statebase.org).
+
+### Usage
 
 ```typescript
-import StateBase from 'statebase-sdk';
+import { StateBase } from 'statebase-sdk';
 
-// Initialize client
-const client = new StateBase('your-api-key');
-
-// Create a session
-const session = await client.createSession({
-  agent_id: 'my-agent',
-  initial_state: { user_name: 'Alice' }
+// 1. Initialize client with Config object
+const client = new StateBase({
+    apiKey: 'sb_live_...'
 });
 
-// Create a turn
-const turn = await client.createTurn(session.id, {
-  input: { type: 'text', content: 'Hello!' },
-  output: { type: 'text', content: 'Hi Alice! How can I help you today?' }
-});
+async function main() {
+    // 2. Create a Session (Agent ID is first arg)
+    const session = await client.createSession('support-agent-v1', {
+        initialState: { 
+            status: 'active',
+            user_preference: 'unknown'
+        }
+    });
+    console.log(`Session Created: ${session.id}`);
 
-// Update state
-await client.updateState(session.id, {
-  updates: { last_greeting: 'Hello' }
-});
+    // 3. Add Long-term Memory
+    await client.createMemory(
+        session.id, 
+        'User prefers dark mode UI', 
+        'preference' // type
+    );
 
-// Create a memory
-const memory = await client.createMemory({
-  content: 'User prefers morning meetings',
-  memory_type: 'preference',
-  session_id: session.id,
-  tags: ['scheduling', 'preferences']
-});
+    // 4. Log a Turn
+    await client.createTurn(
+        session.id,
+        'How do I switch themes?', // input
+        'You can toggle dark mode in settings.', // output
+        { 
+            metadata: { model: 'gpt-4' } 
+        }
+    );
 
-// Search memories
-const results = await client.searchMemories('meeting preferences', {
-  session_id: session.id
-});
+    // 5. Search Memories
+    const memories = await client.searchMemories(
+        'theme preference', 
+        session.id
+    );
+    console.log('Found memory:', memories[0]);
+}
+
+main();
 ```
 
-## JavaScript (CommonJS)
+## 🛠 Features
 
-```javascript
-const StateBase = require('statebase-sdk').default;
+- **Strict Typing**: Full TypeScript definitions included.
+- **Persistent Memory**: Vector-embedded memory storage.
+- **State Management**: Reliable state tracking.
+- **Observability**: Complete trace logging.
+- **Zero Config**: Works with any JS framework (Node.js, Next.js, etc).
 
-const client = new StateBase('your-api-key');
+## 📚 Documentation
 
-client.createSession({
-  agent_id: 'my-agent'
-}).then(session => {
-  console.log('Session created:', session.id);
-});
-```
+Visit [docs.statebase.org](https://docs.statebase.org) for full API docs.
 
-## Features
-
-- **Full TypeScript support** with type definitions
-- **Sessions**: Manage conversation contexts
-- **Turns**: Record agent interactions
-- **State**: Persistent state management
-- **Memory**: Semantic memory storage and search
-- **Promise-based** async API
-
-## Documentation
-
-Visit [docs.statebase.org](https://docs.statebase.org) for complete documentation.
-
-## License
+## 📄 License
 
 MIT
