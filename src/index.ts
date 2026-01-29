@@ -53,7 +53,7 @@ export interface TurnResponse {
 
 export interface MemoryCreateRequest {
     content: string;
-    memory_type?: string;
+    type?: string;
     session_id?: string;
     tags?: string[];
     metadata?: Record<string, any>;
@@ -72,7 +72,7 @@ export interface MemoryResponse {
 }
 
 export interface StateUpdateRequest {
-    updates: Record<string, any>;
+    state: Record<string, any>;
     reasoning?: string;
 }
 
@@ -149,7 +149,7 @@ export class StateBase {
         query: string,
         options?: {
             session_id?: string;
-            memory_type?: string;
+            type?: string;
             limit?: number;
         }
     ): Promise<MemoryResponse[]> {
