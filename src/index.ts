@@ -1,7 +1,15 @@
 import axios, { AxiosInstance } from 'axios';
 
+/**
+ * StateBase TypeScript SDK
+ * The Reliability Layer for Production AI Agents
+ */
+
+// --- Interfaces & Models ---
+
 export interface SessionCreateRequest {
     agent_id: string;
+    user_id?: string;
     metadata?: Record<string, any>;
     initial_state?: Record<string, any>;
     ttl_seconds?: number;
@@ -11,6 +19,7 @@ export interface SessionResponse {
     object: 'session';
     id: string;
     agent_id: string;
+    user_id?: string;
     created_at: string;
     updated_at: string;
     metadata?: Record<string, any>;
@@ -21,18 +30,18 @@ export interface SessionResponse {
 }
 
 export interface TurnInput {
-    type: string;
+    type: 'text' | 'image' | 'tool_call' | string;
     content: string;
 }
 
 export interface TurnOutput {
-    type: string;
+    type: 'text' | 'image' | 'tool_result' | string;
     content: string;
 }
 
 export interface TurnCreateRequest {
-    input: TurnInput;
-    output: TurnOutput;
+    input: TurnInput | string;
+    output: TurnOutput | string;
     metadata?: Record<string, any>;
     reasoning?: string;
 }
@@ -46,40 +55,95 @@ export interface TurnResponse {
     output: TurnOutput;
     metadata?: Record<string, any>;
     reasoning?: string;
-    state_before: Record<string, any>;
-    state_after: Record<string, any>;
+    state_before?: Record<string, any>;
+    state_after?: Record<string, any>;
     created_at: string;
 }
 
 export interface MemoryCreateRequest {
     content: string;
     type?: string;
-    session_id?: string;
+    session_id: string;
     tags?: string[];
     metadata?: Record<string, any>;
+    embed?: boolean;
 }
 
 export interface MemoryResponse {
     object: 'memory';
     id: string;
     content: string;
-    memory_type: string;
-    session_id?: string;
-    tags: string[];
-    metadata?: Record<string, any>;
+    type: string;
+    session_id: string;
+    tags: string[] | null;
+    metadata: Record<string, any> | null;
+    embedding_id: string | null;
+    vector_available: boolean;
+    created_at: string;
+}
+
+export interface MemorySearchResult {
+    id: string;
+    session_id: string;
+    content: string;
+    type: string;
+    score: number;
+}
+
+export interface MemorySearchResponse {
+    data: MemorySearchResult[];
+    query: string;
+}
+
+export interface ContextRequest {
+    query?: string;
+    memory_limit?: number;
+    turn_limit?: number;
+}
+
+export interface ContextResponse {
+    state: Record<string, any>;
+    memories: any[];
+    recent_turns: any[];
+}
+
+export interface StateGetResponse {
+    session_id: string;
+    version: number;
+    state: Record<string, any>;
     created_at: string;
     updated_at: string;
 }
 
-export interface StateUpdateRequest {
-    state: Record<string, any>;
-    reasoning?: string;
+export interface EntityCreateRequest {
+    session_id: string;
+    entity_type: string;
+    entity_id: string;
+    attributes: Record<string, any>;
 }
 
-export interface StateReplaceRequest {
-    state: Record<string, any>;
-    reasoning?: string;
+export interface EntityResponse {
+    object: 'entity';
+    id: string;
+    session_id: string;
+    entity_type: string;
+    entity_id: string;
+    attributes: Record<string, any>;
+    version: number;
+    created_at: string;
+    updated_at: string;
 }
+
+export interface TraceResponse {
+    object: 'trace';
+    id: string;
+    session_id: string;
+    event_type: string;
+    metadata: Record<string, any>;
+    timestamp: string;
+}
+
+// --- Main Client ---
 
 export class StateBase {
     private client: AxiosInstance;
@@ -99,7 +163,7 @@ export class StateBase {
         });
     }
 
-    // Sessions
+    // --- Sessions ---
     async createSession(request: SessionCreateRequest): Promise<SessionResponse> {
         const { data } = await this.client.post<SessionResponse>('/v1/sessions', request);
         return data;
@@ -110,36 +174,59 @@ export class StateBase {
         return data;
     }
 
+    async listSessions(options?: { agent_id?: string; limit?: number; starting_after?: string }): Promise<{ data: SessionResponse[], has_more: boolean }> {
+        const { data } = await this.client.get('/v1/sessions', { params: options });
+        return data;
+    }
+
     async deleteSession(sessionId: string): Promise<void> {
         await this.client.delete(`/v1/sessions/${sessionId}`);
     }
 
-    // Turns
-    async createTurn(sessionId: string, request: TurnCreateRequest): Promise<TurnResponse> {
-        const { data } = await this.client.post<TurnResponse>(
-            `/v1/sessions/${sessionId}/turns`,
-            request
+    async getContext(sessionId: string, request?: ContextRequest): Promise<ContextResponse> {
+        const { data } = await this.client.post<ContextResponse>(
+            `/v1/sessions/${sessionId}/context`,
+            request || {}
         );
         return data;
     }
 
-    // State
-    async getState(sessionId: string): Promise<Record<string, any>> {
-        const { data } = await this.client.get(`/v1/sessions/${sessionId}/state`);
+    // --- Turns ---
+    async createTurn(sessionId: string, request: TurnCreateRequest): Promise<TurnResponse> {
+        // Handle string inputs for better DX
+        const payload = { ...request };
+        if (typeof payload.input === 'string') payload.input = { type: 'text', content: payload.input };
+        if (typeof payload.output === 'string') payload.output = { type: 'text', content: payload.output };
+
+        const { data } = await this.client.post<TurnResponse>(
+            `/v1/sessions/${sessionId}/turns`,
+            payload
+        );
         return data;
     }
 
-    async updateState(sessionId: string, request: StateUpdateRequest): Promise<Record<string, any>> {
-        const { data } = await this.client.patch(`/v1/sessions/${sessionId}/state`, request);
+    async listTurns(sessionId: string, options?: { limit?: number, starting_after?: string }): Promise<{ data: TurnResponse[], has_more: boolean }> {
+        const { data } = await this.client.get(`/v1/sessions/${sessionId}/turns`, { params: options });
         return data;
     }
 
-    async replaceState(sessionId: string, request: StateReplaceRequest): Promise<Record<string, any>> {
-        const { data } = await this.client.put(`/v1/sessions/${sessionId}/state`, request);
+    // --- State & Reliability ---
+    async getState(sessionId: string): Promise<StateGetResponse> {
+        const { data } = await this.client.get<StateGetResponse>(`/v1/sessions/${sessionId}/state`);
         return data;
     }
 
-    // Memories
+    async updateState(sessionId: string, state: Record<string, any>): Promise<StateGetResponse> {
+        const { data } = await this.client.patch<StateGetResponse>(`/v1/sessions/${sessionId}/state`, { state });
+        return data;
+    }
+
+    async rollbackState(sessionId: string, version: number): Promise<StateGetResponse> {
+        const { data } = await this.client.post<StateGetResponse>(`/v1/sessions/${sessionId}/state/rollback`, { version });
+        return data;
+    }
+
+    // --- Memories ---
     async createMemory(request: MemoryCreateRequest): Promise<MemoryResponse> {
         const { data } = await this.client.post<MemoryResponse>('/v1/memories', request);
         return data;
@@ -149,21 +236,41 @@ export class StateBase {
         query: string,
         options?: {
             session_id?: string;
-            type?: string;
+            types?: string;
+            tags?: string;
             limit?: number;
+            threshold?: number;
         }
-    ): Promise<MemoryResponse[]> {
-        const { data } = await this.client.get<{ data: MemoryResponse[] }>('/v1/memories/search', {
+    ): Promise<MemorySearchResult[]> {
+        const { data } = await this.client.get<MemorySearchResponse>('/v1/memories', {
             params: {
                 query,
+                top_k: options?.limit,
                 ...options,
             },
         });
         return data.data;
     }
 
-    // Health
-    async health(): Promise<Record<string, any>> {
+    // --- Entities ---
+    async createEntity(request: EntityCreateRequest): Promise<EntityResponse> {
+        const { data } = await this.client.post<EntityResponse>('/v1/entities', request);
+        return data;
+    }
+
+    async getEntity(entityId: string): Promise<EntityResponse> {
+        const { data } = await this.client.get<EntityResponse>(`/v1/entities/${entityId}`);
+        return data;
+    }
+
+    // --- Traces ---
+    async listTraces(options?: { session_id?: string; limit?: number }): Promise<{ data: TraceResponse[] }> {
+        const { data } = await this.client.get('/v1/traces', { params: options });
+        return data;
+    }
+
+    // --- Health ---
+    async health(): Promise<any> {
         const { data } = await this.client.get('/health');
         return data;
     }
