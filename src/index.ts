@@ -111,7 +111,7 @@ export interface StateGetResponse {
     session_id: string;
     version: number;
     state: Record<string, any>;
-    created_at: string;
+    created_at?: string;
     updated_at: string;
 }
 
