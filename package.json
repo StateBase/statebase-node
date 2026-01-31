@@ -1,7 +1,7 @@
 {
-    "name": "statebase-sdk",
-    "version": "0.1.1",
-    "description": "The Reliability Layer for Production AI Agents",
+    "name": "@statebase/node",
+    "version": "1.0.0",
+    "description": "The Reliability Layer for Production AI Agents - TypeScript/Node.js SDK",
     "main": "dist/index.js",
     "types": "dist/index.d.ts",
     "scripts": {

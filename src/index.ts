@@ -115,74 +115,45 @@ export interface StateGetResponse {
     updated_at: string;
 }
 
-export interface EntityCreateRequest {
-    session_id: string;
-    entity_type: string;
-    entity_id: string;
-    attributes: Record<string, any>;
-}
+// --- Namespaces ---
 
-export interface EntityResponse {
-    object: 'entity';
-    id: string;
-    session_id: string;
-    entity_type: string;
-    entity_id: string;
-    attributes: Record<string, any>;
-    version: number;
-    created_at: string;
-    updated_at: string;
-}
+class SessionsNamespace {
+    constructor(private client: AxiosInstance) { }
 
-export interface TraceResponse {
-    object: 'trace';
-    id: string;
-    session_id: string;
-    event_type: string;
-    metadata: Record<string, any>;
-    timestamp: string;
-}
-
-// --- Main Client ---
-
-export class StateBase {
-    private client: AxiosInstance;
-
-    constructor(
-        apiKey: string,
-        baseURL: string = 'https://api.statebase.org',
-        timeout: number = 30000
-    ) {
-        this.client = axios.create({
-            baseURL,
-            timeout,
-            headers: {
-                'X-API-Key': apiKey,
-                'Content-Type': 'application/json',
-            },
-        });
-    }
-
-    // --- Sessions ---
-    async createSession(request: SessionCreateRequest): Promise<SessionResponse> {
+    /**
+     * Creates a new agent session for storing state and memory.
+     */
+    async create(request: SessionCreateRequest): Promise<SessionResponse> {
         const { data } = await this.client.post<SessionResponse>('/v1/sessions', request);
         return data;
     }
 
-    async getSession(sessionId: string): Promise<SessionResponse> {
+    /**
+     * Retrieves a session by its identifier.
+     */
+    async get(sessionId: string): Promise<SessionResponse> {
         const { data } = await this.client.get<SessionResponse>(`/v1/sessions/${sessionId}`);
         return data;
     }
 
-    async listSessions(options?: { agent_id?: string; limit?: number; starting_after?: string }): Promise<{ data: SessionResponse[], has_more: boolean }> {
+    /**
+     * Lists all sessions with optional filtering.
+     */
+    async list(options?: { agent_id?: string; limit?: number; starting_after?: string }): Promise<{ data: SessionResponse[], has_more: boolean }> {
         const { data } = await this.client.get('/v1/sessions', { params: options });
         return data;
     }
 
-    async deleteSession(sessionId: string): Promise<void> {
+    /**
+     * Deletes a session and all its associated data.
+     */
+    async delete(sessionId: string): Promise<void> {
         await this.client.delete(`/v1/sessions/${sessionId}`);
     }
 
+    /**
+     * Optimized call for agent prompts. Fetches State, Memories, and Turns in a single call.
+     */
     async getContext(sessionId: string, request?: ContextRequest): Promise<ContextResponse> {
         const { data } = await this.client.post<ContextResponse>(
             `/v1/sessions/${sessionId}/context`,
@@ -191,9 +162,10 @@ export class StateBase {
         return data;
     }
 
-    // --- Turns ---
-    async createTurn(sessionId: string, request: TurnCreateRequest): Promise<TurnResponse> {
-        // Handle string inputs for better DX
+    /**
+     * Adds an interaction turn to the session history.
+     */
+    async addTurn(sessionId: string, request: TurnCreateRequest): Promise<TurnResponse> {
         const payload = { ...request };
         if (typeof payload.input === 'string') payload.input = { type: 'text', content: payload.input };
         if (typeof payload.output === 'string') payload.output = { type: 'text', content: payload.output };
@@ -205,34 +177,62 @@ export class StateBase {
         return data;
     }
 
+    /**
+     * Retrieves the turn history for a session.
+     */
     async listTurns(sessionId: string, options?: { limit?: number, starting_after?: string }): Promise<{ data: TurnResponse[], has_more: boolean }> {
         const { data } = await this.client.get(`/v1/sessions/${sessionId}/turns`, { params: options });
         return data;
     }
 
-    // --- State & Reliability ---
+    /**
+     * Retrieves the current state of a session.
+     */
     async getState(sessionId: string): Promise<StateGetResponse> {
         const { data } = await this.client.get<StateGetResponse>(`/v1/sessions/${sessionId}/state`);
         return data;
     }
 
-    async updateState(sessionId: string, state: Record<string, any>): Promise<StateGetResponse> {
-        const { data } = await this.client.patch<StateGetResponse>(`/v1/sessions/${sessionId}/state`, { state });
+    /**
+     * Updates the session state.
+     */
+    async updateState(sessionId: string, state: Record<string, any>, reasoning?: string): Promise<StateGetResponse> {
+        const { data } = await this.client.patch<StateGetResponse>(`/v1/sessions/${sessionId}/state`, { state, reasoning });
         return data;
     }
 
-    async rollbackState(sessionId: string, version: number): Promise<StateGetResponse> {
+    /**
+     * Reverts the session to a previous state version.
+     */
+    async rollback(sessionId: string, version: number): Promise<StateGetResponse> {
         const { data } = await this.client.post<StateGetResponse>(`/v1/sessions/${sessionId}/state/rollback`, { version });
         return data;
     }
 
-    // --- Memories ---
-    async createMemory(request: MemoryCreateRequest): Promise<MemoryResponse> {
+    /**
+     * Creates a new session from a specific version of an existing session.
+     */
+    async fork(sessionId: string, version?: number): Promise<SessionResponse> {
+        const { data } = await this.client.post<SessionResponse>(`/v1/sessions/${sessionId}/fork`, { version });
+        return data;
+    }
+}
+
+class MemoryNamespace {
+    constructor(private client: AxiosInstance) { }
+
+    /**
+     * Manually adds a memory fact to StateBase.
+     */
+    async add(request: MemoryCreateRequest): Promise<MemoryResponse> {
         const { data } = await this.client.post<MemoryResponse>('/v1/memories', request);
         return data;
     }
 
-    async searchMemories(
+    /**
+     * Performs a semantic search across memories.
+     */
+    async search(
         query: string,
         options?: {
             session_id?: string;
@@ -251,25 +251,36 @@ export class StateBase {
         });
         return data.data;
     }
+}
 
-    // --- Entities ---
-    async createEntity(request: EntityCreateRequest): Promise<EntityResponse> {
-        const { data } = await this.client.post<EntityResponse>('/v1/entities', request);
-        return data;
+// --- Main Client ---
+
+export class StateBase {
+    private client: AxiosInstance;
+    public sessions: SessionsNamespace;
+    public memory: MemoryNamespace;
+
+    constructor(
+        apiKey: string,
+        baseURL: string = 'https://api.statebase.org',
+        timeout: number = 30000
+    ) {
+        this.client = axios.create({
+            baseURL,
+            timeout,
+            headers: {
+                'X-API-Key': apiKey,
+                'Content-Type': 'application/json',
+            },
+        });
+
+        this.sessions = new SessionsNamespace(this.client);
+        this.memory = new MemoryNamespace(this.client);
     }
 
-    async getEntity(entityId: string): Promise<EntityResponse> {
-        const { data } = await this.client.get<EntityResponse>(`/v1/entities/${entityId}`);
-        return data;
-    }
-
-    // --- Traces ---
-    async listTraces(options?: { session_id?: string; limit?: number }): Promise<{ data: TraceResponse[] }> {
-        const { data } = await this.client.get('/v1/traces', { params: options });
-        return data;
-    }
-
-    // --- Health ---
+    /**
+     * Check if the API is reachable and healthy.
+     */
     async health(): Promise<any> {
         const { data } = await this.client.get('/health');
         return data;
