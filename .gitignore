@@ -24,3 +24,7 @@ yarn-error.log*
 .idea/
 .vscode/
 *.tsbuildinfo
+
+# Internal Planning Docs
+TYPESCRIPT_SDK_ANALYSIS.md
+
