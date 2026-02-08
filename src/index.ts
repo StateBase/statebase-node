@@ -101,10 +101,21 @@ export interface ContextRequest {
     turn_limit?: number;
 }
 
+export interface ContextMemory {
+    content: string;
+    type: string;
+    score: number;
+}
+
+export interface ContextTurn {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
 export interface ContextResponse {
     state: Record<string, any>;
-    memories: any[];
-    recent_turns: any[];
+    memories: ContextMemory[];
+    recent_turns: ContextTurn[];
 }
 
 export interface StateGetResponse {
