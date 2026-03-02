@@ -116,6 +116,9 @@ export interface ContextResponse {
     state: Record<string, any>;
     memories: ContextMemory[];
     recent_turns: ContextTurn[];
+    drift_warning?: boolean;
+    average_relevance?: number;
+    latency_ms?: string;
 }
 
 export interface StateGetResponse {
@@ -166,11 +169,30 @@ class SessionsNamespace {
      * Optimized call for agent prompts. Fetches State, Memories, and Turns in a single call.
      */
     async getContext(sessionId: string, request?: ContextRequest): Promise<ContextResponse> {
-        const { data } = await this.client.post<ContextResponse>(
+        const response = await this.client.post<ContextResponse>(
             `/v1/sessions/${sessionId}/context`,
             request || {}
         );
+        const data = response.data;
+        // Surfacing latency header for observability
+        data.latency_ms = response.headers['x-statebase-latency'] as string;
         return data;
+    }
+
+    /**
+     * High-level wrapper to log a conversation turn.
+     */
+    async ingest(
+        sessionId: string,
+        userInput: string,
+        agentOutput: string,
+        metadata?: Record<string, any>
+    ): Promise<TurnResponse> {
+        return this.addTurn(sessionId, {
+            input: userInput,
+            output: agentOutput,
+            metadata
+        });
     }
 
     /**
